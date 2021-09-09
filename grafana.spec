@@ -1,48 +1,39 @@
-%global grafana_arches %{lua: go_arches = {}
-  for arch in rpm.expand("%{go_arches}"):gmatch("%S+") do
-    go_arches[arch] = 1
-  end
-  for arch in rpm.expand("%{nodejs_arches}"):gmatch("%S+") do
-    if go_arches[arch] then
-      print(arch .. " ")
-  end
-end}
-
-# Unbundle Grafana vendor sources and instead use BuildRequires
-# on platforms that have enough golang devel support.
+%if ! 0%{?gobuild:1}
+%define gobuild(o:) GO111MODULE=off go build -buildmode pie -compiler gc -tags="rpm_crashtraceback ${BUILDTAGS:-}" -ldflags "${LDFLAGS:-} -B 0x$(head -c20 /dev/urandom|od -An -tx1|tr -d ' \\n') -extldflags '-Wl,-z,relro -Wl,-z,now -specs=/usr/lib/rpm/openEuler/openEuler-hardened-ld '" -a -v -x %{?**};
+%endif
+%if ! 0%{?gotest:1}
+%define gotest() GO111MODULE=off go test -buildmode pie -compiler gc -ldflags "${LDFLAGS:-} -extldflags '-Wl,-z,relro -Wl,-z,now -specs=/usr/lib/rpm/openEuler/openEuler-hardened-ld '" %{?**};
+%endif
 
 Name:             grafana
-Version:          6.7.4
-Release:          1%{?dist}
+Version:          7.3.6
+Release:          1
 Summary:          Metrics dashboard and graph editor
-License:          ASL 2.0
+License:          Apache 2.0
 URL:              https://grafana.org
-
 # Source0 contains the tagged upstream sources
 Source0:          https://github.com/grafana/grafana/archive/v%{version}/%{name}-%{version}.tar.gz
+# Source1 contains the bundled Go and Node.js dependencies
+Source1:          grafana-vendor-%{version}.tar.xz
+# Source2 contains the precompiled frontend
+Source2:          grafana-webpack-%{version}.tar.gz
+# Source3 contains Grafana configuration defaults for distributions
+Source3:          distro-defaults.ini
 
-# Source1 contains the front-end javascript modules bundled into a webpack
-Source1:          grafana_webpack-%{version}.tar.gz
+# Patches
+Patch1:           001-wrappers-grafana-cli.patch
+Patch2:           002-manpages.patch
+# remove failing assertions due to a symlink
+# BUILD/src/github.com/grafana/grafana -> BUILD/grafana-X.Y.Z
+Patch3:           003-remove-dashboard-abspath-test.patch
+Patch4:           004-pin-yarn-version.patch
+Patch5:           005-remove-saml-dependency.patch
 
-# Source2 contains Grafana configuration defaults for distributions
-Source2:          distro-defaults.ini
-
-# Source3 is the script to create the webpack from grafana sources
-Source3:          make_grafana_webpack.sh
-
-# Source4 is the script to generate the list of Go build dependencies:
-Source4:          list_go_buildrequires.sh
-
-# Source5 is the script to generate the list of bundled nodejs packages
-Source5:          list_bundled_nodejs_packages.py
-
-# Intersection of go_arches and nodejs_arches
-ExclusiveArch:    aarch64 x86_64
+BuildRequires:    git systemd golang openEuler-rpm-config 
 
 # omit golang debugsource, see BZ995136 and related
 %global           dwz_low_mem_die_limit 0
 %global           _debugsource_template %{nil}
-
 %global           GRAFANA_USER %{name}
 %global           GRAFANA_GROUP %{name}
 %global           GRAFANA_HOME %{_datadir}/%{name}
@@ -51,241 +42,398 @@ ExclusiveArch:    aarch64 x86_64
 %{?systemd_requires}
 Requires(pre):    shadow-utils
 
-BuildRequires:    git, systemd, golang
+Obsoletes:        grafana-cloudwatch < 7.3.6-1
+Obsoletes:        grafana-elasticsearch < 7.3.6-1
+Obsoletes:        grafana-azure-monitor < 7.3.6-1
+Obsoletes:        grafana-graphite < 7.3.6-1
+Obsoletes:        grafana-influxdb < 7.3.6-1
+Obsoletes:        grafana-loki < 7.3.6-1
+Obsoletes:        grafana-mssql < 7.3.6-1
+Obsoletes:        grafana-mysql < 7.3.6-1
+Obsoletes:        grafana-opentsdb < 7.3.6-1
+Obsoletes:        grafana-postgres < 7.3.6-1
+Obsoletes:        grafana-prometheus < 7.3.6-1
+Obsoletes:        grafana-stackdriver < 7.3.6-1
+Provides:         grafana-cloudwatch = 7.3.6-1
+Provides:         grafana-elasticsearch = 7.3.6-1
+Provides:         grafana-azure-monitor = 7.3.6-1
+Provides:         grafana-graphite = 7.3.6-1
+Provides:         grafana-influxdb = 7.3.6-1
+Provides:         grafana-loki = 7.3.6-1
+Provides:         grafana-mssql = 7.3.6-1
+Provides:         grafana-mysql = 7.3.6-1
+Provides:         grafana-opentsdb = 7.3.6-1
+Provides:         grafana-postgres = 7.3.6-1
+Provides:         grafana-prometheus = 7.3.6-1
+Provides:         grafana-stackdriver = 7.3.6-1
 
-
-# Declare all nodejs modules bundled in the webpack - this is for security
-# purposes so if nodejs-foo ever needs an update, affected packages can be
-# easily identified.
-# Note: generated with the list_bundled_nodejs_packages.sh script (see README.md)
-Provides: bundled(nodejs-@braintree/sanitize-url) = 4.0.0
-Provides: bundled(nodejs-@grafana/slate-react) = 0.22.9-grafana
-Provides: bundled(nodejs-@reduxjs/toolkit) = 1.2.1
-Provides: bundled(nodejs-@torkelo/react-select) = 3.0.8
-Provides: bundled(nodejs-@types/md5) = 2.1.33
-Provides: bundled(nodejs-@types/react-loadable) = 5.5.2
-Provides: bundled(nodejs-@types/react-virtualized-auto-sizer) = 1.0.0
-Provides: bundled(nodejs-@types/uuid) = 3.4.7
-Provides: bundled(nodejs-abortcontroller-polyfill) = 1.4.0
-Provides: bundled(nodejs-angular) = 1.6.9
-Provides: bundled(nodejs-angular-bindonce) = 0.3.1
-Provides: bundled(nodejs-angular-native-dragdrop) = 1.2.2
-Provides: bundled(nodejs-angular-route) = 1.6.6
-Provides: bundled(nodejs-angular-sanitize) = 1.6.6
-Provides: bundled(nodejs-baron) = 3.0.3
-Provides: bundled(nodejs-brace) = 0.10.0
-Provides: bundled(nodejs-calculate-size) = 1.1.1
-Provides: bundled(nodejs-classnames) = 2.2.6
-Provides: bundled(nodejs-clipboard) = 2.0.4
-Provides: bundled(nodejs-core-js) = 1.2.7
-Provides: bundled(nodejs-d3) = 5.15.0
-Provides: bundled(nodejs-d3-scale-chromatic) = 1.5.0
-Provides: bundled(nodejs-emotion) = 10.0.27
-Provides: bundled(nodejs-eventemitter3) = 2.0.3
-Provides: bundled(nodejs-fast-text-encoding) = 1.0.0
-Provides: bundled(nodejs-file-saver) = 1.3.8
-Provides: bundled(nodejs-hoist-non-react-statics) = 3.3.0
-Provides: bundled(nodejs-immutable) = 3.8.2
-Provides: bundled(nodejs-is-hotkey) = 0.1.4
-Provides: bundled(nodejs-jquery) = 3.4.1
-Provides: bundled(nodejs-lodash) = 3.10.1
-Provides: bundled(nodejs-lru-cache) = 4.1.5
-Provides: bundled(nodejs-marked) = 0.3.19
-Provides: bundled(nodejs-md5) = 2.2.1
-Provides: bundled(nodejs-memoize-one) = 4.1.0
-Provides: bundled(nodejs-moment) = 2.24.0
-Provides: bundled(nodejs-mousetrap) = 1.6.3
-Provides: bundled(nodejs-mousetrap-global-bind) = 1.1.0
-Provides: bundled(nodejs-nodemon) = 1.18.10
-Provides: bundled(nodejs-papaparse) = 4.6.3
-Provides: bundled(nodejs-prismjs) = 1.16.0
-Provides: bundled(nodejs-prop-types) = 15.7.2
-Provides: bundled(nodejs-rc-cascader) = 0.17.5
-Provides: bundled(nodejs-re-resizable) = 6.2.0
-Provides: bundled(nodejs-react) = 16.10.2
-Provides: bundled(nodejs-react-dom) = 16.10.2
-Provides: bundled(nodejs-react-grid-layout) = 0.17.1
-Provides: bundled(nodejs-react-highlight-words) = 0.11.0
-Provides: bundled(nodejs-react-loadable) = 5.5.0
-Provides: bundled(nodejs-react-popper) = 1.3.3
-Provides: bundled(nodejs-react-redux) = 7.1.1
-Provides: bundled(nodejs-react-sizeme) = 2.5.2
-Provides: bundled(nodejs-react-split-pane) = 0.1.89
-Provides: bundled(nodejs-react-transition-group) = 2.6.1
-Provides: bundled(nodejs-react-use) = 12.8.0
-Provides: bundled(nodejs-react-virtualized-auto-sizer) = 1.0.2
-Provides: bundled(nodejs-react-window) = 1.7.1
-Provides: bundled(nodejs-redux) = 3.7.2
-Provides: bundled(nodejs-redux-logger) = 3.0.6
-Provides: bundled(nodejs-redux-thunk) = 2.3.0
-Provides: bundled(nodejs-regenerator-runtime) = 0.11.1
-Provides: bundled(nodejs-reselect) = 4.0.0
-Provides: bundled(nodejs-rst2html) = 1.0.4
-Provides: bundled(nodejs-rxjs) = 5.5.12
-Provides: bundled(nodejs-search-query-parser) = 1.5.2
-Provides: bundled(nodejs-slate) = 0.47.8
-Provides: bundled(nodejs-slate-plain-serializer) = 0.7.10
-Provides: bundled(nodejs-tether) = 1.4.5
-Provides: bundled(nodejs-tether-drop) = 1.5.0
-Provides: bundled(nodejs-tinycolor2) = 1.4.1
-Provides: bundled(nodejs-tti-polyfill) = 0.2.2
-Provides: bundled(nodejs-uuid) = 3.3.3
-Provides: bundled(nodejs-whatwg-fetch) = 3.0.0
-Provides: bundled(nodejs-xss) = 1.0.3
-
+# vendored golang and node.js build dependencies
+# this is for security purposes, if nodejs-foo ever needs an update,
+# affected packages can be easily identified.
+# Note: generated by the Makefile (see README.md)
+Provides: bundled(golang(cloud.google.com/go/storage)) = 1.10.0
+Provides: bundled(golang(github.com/BurntSushi/toml)) = 0.3.1
+Provides: bundled(golang(github.com/VividCortex/mysqlerr)) = 0.0.0-20170204212430.6c6b55f8796f
+Provides: bundled(golang(github.com/aws/aws-sdk-go)) = 1.33.12
+Provides: bundled(golang(github.com/beevik/etree)) = 1.1.0
+Provides: bundled(golang(github.com/benbjohnson/clock)) = 0.0.0-20161215174838.7dc76406b6d3
+Provides: bundled(golang(github.com/bradfitz/gomemcache)) = 0.0.0-20190913173617.a41fca850d0b
+Provides: bundled(golang(github.com/centrifugal/centrifuge)) = 0.11.0
+Provides: bundled(golang(github.com/davecgh/go-spew)) = 1.1.1
+Provides: bundled(golang(github.com/denisenkom/go-mssqldb)) = 0.0.0-20200620013148.b91950f658ec
+Provides: bundled(golang(github.com/facebookgo/inject)) = 0.0.0-20180706035515.f23751cae28b
+Provides: bundled(golang(github.com/fatih/color)) = 1.9.0
+Provides: bundled(golang(github.com/gchaincl/sqlhooks)) = 1.3.0
+Provides: bundled(golang(github.com/go-macaron/binding)) = 0.0.0-20190806013118.0b4f37bab25b
+Provides: bundled(golang(github.com/go-macaron/gzip)) = 0.0.0-20160222043647.cad1c6580a07
+Provides: bundled(golang(github.com/go-macaron/session)) = 0.0.0-20190805070824.1a3cdc6f5659
+Provides: bundled(golang(github.com/go-sql-driver/mysql)) = 1.5.0
+Provides: bundled(golang(github.com/go-stack/stack)) = 1.8.0
+Provides: bundled(golang(github.com/gobwas/glob)) = 0.2.3
+Provides: bundled(golang(github.com/golang/protobuf)) = 1.4.3
+Provides: bundled(golang(github.com/google/go-cmp)) = 0.5.2
+Provides: bundled(golang(github.com/gosimple/slug)) = 1.4.2
+Provides: bundled(golang(github.com/grafana/grafana-plugin-model)) = 0.0.0-20190930120109.1fc953a61fb4
+Provides: bundled(golang(github.com/grafana/grafana-plugin-sdk-go)) = 0.79.0
+Provides: bundled(golang(github.com/grafana/loki)) = 1.6.0
+Provides: bundled(golang(github.com/grpc-ecosystem/go-grpc-middleware)) = 1.2.1
+Provides: bundled(golang(github.com/hashicorp/go-hclog)) = 0.12.2
+Provides: bundled(golang(github.com/hashicorp/go-plugin)) = 1.2.2
+Provides: bundled(golang(github.com/hashicorp/go-version)) = 1.2.0
+Provides: bundled(golang(github.com/inconshreveable/log15)) = 0.0.0-20180818164646.67afb5ed74ec
+Provides: bundled(golang(github.com/influxdata/influxdb-client-go/v2)) = 2.2.0
+Provides: bundled(golang(github.com/jmespath/go-jmespath)) = 0.3.0
+Provides: bundled(golang(github.com/jung-kurt/gofpdf)) = 1.10.1
+Provides: bundled(golang(github.com/lib/pq)) = 1.3.0
+Provides: bundled(golang(github.com/linkedin/goavro/v2)) = 2.9.7
+Provides: bundled(golang(github.com/magefile/mage)) = 1.9.0
+Provides: bundled(golang(github.com/mattn/go-isatty)) = 0.0.12
+Provides: bundled(golang(github.com/mattn/go-sqlite3)) = 1.11.0
+Provides: bundled(golang(github.com/opentracing/opentracing-go)) = 1.2.0
+Provides: bundled(golang(github.com/patrickmn/go-cache)) = 2.1.0+incompatible
+Provides: bundled(golang(github.com/pkg/errors)) = 0.9.1
+Provides: bundled(golang(github.com/prometheus/client_golang)) = 1.8.0
+Provides: bundled(golang(github.com/prometheus/client_model)) = 0.2.0
+Provides: bundled(golang(github.com/prometheus/common)) = 0.14.0
+Provides: bundled(golang(github.com/robfig/cron)) = 0.0.0-20180505203441.b41be1df6967
+Provides: bundled(golang(github.com/robfig/cron/v3)) = 3.0.0
+Provides: bundled(golang(github.com/russellhaering/goxmldsig)) = 1.1.0
+Provides: bundled(golang(github.com/smartystreets/goconvey)) = 1.6.4
+Provides: bundled(golang(github.com/stretchr/testify)) = 1.6.1
+Provides: bundled(golang(github.com/teris-io/shortid)) = 0.0.0-20171029131806.771a37caa5cf
+Provides: bundled(golang(github.com/timberio/go-datemath)) = 0.1.1-0.20200323150745.74ddef604fff
+Provides: bundled(golang(github.com/ua-parser/uap-go)) = 0.0.0-20190826212731.daf92ba38329
+Provides: bundled(golang(github.com/uber/jaeger-client-go)) = 2.25.0+incompatible
+Provides: bundled(golang(github.com/unknwon/com)) = 1.0.1
+Provides: bundled(golang(github.com/urfave/cli/v2)) = 2.1.1
+Provides: bundled(golang(github.com/weaveworks/common)) = 0.0.0-20201119133501.0619918236ec
+Provides: bundled(golang(github.com/xorcare/pointer)) = 1.1.0
+Provides: bundled(golang(github.com/yudai/gojsondiff)) = 1.0.0
+Provides: bundled(golang(golang.org/x/crypto)) = 0.0.0-20201208171446.5f87f3452ae9
+Provides: bundled(golang(golang.org/x/net)) = 0.0.0-20201022231255.08b38378de70
+Provides: bundled(golang(golang.org/x/oauth2)) = 0.0.0-20200902213428.5d25da1a8d43
+Provides: bundled(golang(golang.org/x/sync)) = 0.0.0-20201020160332.67f06af15bc9
+Provides: bundled(golang(golang.org/x/time)) = 0.0.0-20200630173020.3af7569d3a1e
+Provides: bundled(golang(google.golang.org/grpc)) = 1.33.1
+Provides: bundled(golang(gopkg.in/ini.v1)) = 1.51.0
+Provides: bundled(golang(gopkg.in/ldap.v3)) = 3.0.2
+Provides: bundled(golang(gopkg.in/macaron.v1)) = 1.3.9
+Provides: bundled(golang(gopkg.in/mail.v2)) = 2.3.1
+Provides: bundled(golang(gopkg.in/redis.v5)) = 5.2.9
+Provides: bundled(golang(gopkg.in/square/go-jose.v2)) = 2.4.1
+Provides: bundled(golang(gopkg.in/yaml.v2)) = 2.3.0
+Provides: bundled(golang(xorm.io/core)) = 0.7.3
+Provides: bundled(golang(xorm.io/xorm)) = 0.8.1
+Provides: bundled(npm(@babel/core)) = 7.6.2
+Provides: bundled(npm(@babel/plugin-proposal-nullish-coalescing-operator)) = 7.8.3
+Provides: bundled(npm(@babel/plugin-proposal-optional-chaining)) = 7.8.3
+Provides: bundled(npm(@babel/plugin-syntax-dynamic-import)) = 7.2.0
+Provides: bundled(npm(@babel/preset-env)) = 7.6.3
+Provides: bundled(npm(@babel/preset-react)) = 7.6.3
+Provides: bundled(npm(@babel/preset-typescript)) = 7.8.3
+Provides: bundled(npm(@emotion/core)) = 10.0.21
+Provides: bundled(npm(@grafana/api-documenter)) = 0.9.3
+Provides: bundled(npm(@grafana/api-extractor)) = 7.10.1
+Provides: bundled(npm(@grafana/eslint-config)) = 2.0.3
+Provides: bundled(npm(@grafana/slate-react)) = 0.22.9-grafana
+Provides: bundled(npm(@reduxjs/toolkit)) = 1.3.4
+Provides: bundled(npm(@rtsao/plugin-proposal-class-properties)) = 7.0.1-patch.1
+Provides: bundled(npm(@testing-library/jest-dom)) = 5.11.3
+Provides: bundled(npm(@testing-library/react)) = 10.4.8
+Provides: bundled(npm(@testing-library/react-hooks)) = 3.2.1
+Provides: bundled(npm(@testing-library/user-event)) = 12.1.3
+Provides: bundled(npm(@torkelo/react-select)) = 3.0.8
+Provides: bundled(npm(@types/angular)) = 1.6.56
+Provides: bundled(npm(@types/angular-route)) = 1.7.0
+Provides: bundled(npm(@types/antlr4)) = 4.7.1
+Provides: bundled(npm(@types/braintree__sanitize-url)) = 4.0.0
+Provides: bundled(npm(@types/classnames)) = 2.2.7
+Provides: bundled(npm(@types/clipboard)) = 2.0.1
+Provides: bundled(npm(@types/common-tags)) = 1.8.0
+Provides: bundled(npm(@types/d3)) = 5.7.2
+Provides: bundled(npm(@types/d3-scale-chromatic)) = 1.3.1
+Provides: bundled(npm(@types/enzyme)) = 3.10.3
+Provides: bundled(npm(@types/enzyme-adapter-react-16)) = 1.0.6
+Provides: bundled(npm(@types/file-saver)) = 2.0.1
+Provides: bundled(npm(@types/hoist-non-react-statics)) = 3.3.1
+Provides: bundled(npm(@types/is-hotkey)) = 0.1.1
+Provides: bundled(npm(@types/jest)) = 23.3.14
+Provides: bundled(npm(@types/jquery)) = 3.3.38
+Provides: bundled(npm(@types/jsurl)) = 1.2.28
+Provides: bundled(npm(@types/lodash)) = 4.14.123
+Provides: bundled(npm(@types/lru-cache)) = 5.1.0
+Provides: bundled(npm(@types/marked)) = 1.1.0
+Provides: bundled(npm(@types/md5)) = 2.1.33
+Provides: bundled(npm(@types/moment-timezone)) = 0.5.13
+Provides: bundled(npm(@types/mousetrap)) = 1.6.3
+Provides: bundled(npm(@types/node)) = 10.14.1
+Provides: bundled(npm(@types/papaparse)) = 5.2.0
+Provides: bundled(npm(@types/prismjs)) = 1.16.0
+Provides: bundled(npm(@types/react)) = 16.8.16
+Provides: bundled(npm(@types/react-beautiful-dnd)) = 12.1.2
+Provides: bundled(npm(@types/react-dom)) = 16.8.4
+Provides: bundled(npm(@types/react-grid-layout)) = 0.16.7
+Provides: bundled(npm(@types/react-loadable)) = 5.5.2
+Provides: bundled(npm(@types/react-redux)) = 7.1.7
+Provides: bundled(npm(@types/react-select)) = 3.0.8
+Provides: bundled(npm(@types/react-test-renderer)) = 16.9.1
+Provides: bundled(npm(@types/react-transition-group)) = 4.2.3
+Provides: bundled(npm(@types/react-virtualized-auto-sizer)) = 1.0.0
+Provides: bundled(npm(@types/react-window)) = 1.8.1
+Provides: bundled(npm(@types/redux-logger)) = 3.0.7
+Provides: bundled(npm(@types/redux-mock-store)) = 1.0.2
+Provides: bundled(npm(@types/reselect)) = 2.2.0
+Provides: bundled(npm(@types/slate)) = 0.47.1
+Provides: bundled(npm(@types/slate-plain-serializer)) = 0.6.1
+Provides: bundled(npm(@types/slate-react)) = 0.22.5
+Provides: bundled(npm(@types/sockjs-client)) = 1.1.1
+Provides: bundled(npm(@types/testing-library__jest-dom)) = 5.9.2
+Provides: bundled(npm(@types/testing-library__react-hooks)) = 3.1.0
+Provides: bundled(npm(@types/tinycolor2)) = 1.4.1
+Provides: bundled(npm(@types/uuid)) = 8.3.0
+Provides: bundled(npm(@typescript-eslint/eslint-plugin)) = 4.0.1
+Provides: bundled(npm(@typescript-eslint/parser)) = 4.0.1
+Provides: bundled(npm(@welldone-software/why-did-you-render)) = 4.0.6
+Provides: bundled(npm(abortcontroller-polyfill)) = 1.4.0
+Provides: bundled(npm(angular)) = 1.6.9
+Provides: bundled(npm(angular-bindonce)) = 0.3.1
+Provides: bundled(npm(angular-mocks)) = 1.6.6
+Provides: bundled(npm(angular-native-dragdrop)) = 1.2.2
+Provides: bundled(npm(angular-route)) = 1.6.6
+Provides: bundled(npm(angular-sanitize)) = 1.6.6
+Provides: bundled(npm(antlr4)) = 4.8.0
+Provides: bundled(npm(autoprefixer)) = 9.7.4
+Provides: bundled(npm(axios)) = 0.19.0
+Provides: bundled(npm(babel-core)) = 7.0.0-bridge.0
+Provides: bundled(npm(babel-jest)) = 24.8.0
+Provides: bundled(npm(babel-loader)) = 8.0.6
+Provides: bundled(npm(babel-plugin-angularjs-annotate)) = 0.10.0
+Provides: bundled(npm(baron)) = 3.0.3
+Provides: bundled(npm(brace)) = 0.11.1
+Provides: bundled(npm(calculate-size)) = 1.1.1
+Provides: bundled(npm(centrifuge)) = 2.6.4
+Provides: bundled(npm(classnames)) = 2.2.6
+Provides: bundled(npm(clean-webpack-plugin)) = 3.0.0
+Provides: bundled(npm(clipboard)) = 2.0.4
+Provides: bundled(npm(common-tags)) = 1.8.0
+Provides: bundled(npm(core-js)) = 1.2.7
+Provides: bundled(npm(css-loader)) = 3.2.0
+Provides: bundled(npm(d3)) = 5.15.0
+Provides: bundled(npm(d3-scale-chromatic)) = 1.5.0
+Provides: bundled(npm(dangerously-set-html-content)) = 1.0.6
+Provides: bundled(npm(emotion)) = 10.0.27
+Provides: bundled(npm(enzyme)) = 3.11.0
+Provides: bundled(npm(enzyme-adapter-react-16)) = 1.15.2
+Provides: bundled(npm(enzyme-to-json)) = 3.4.4
+Provides: bundled(npm(es6-promise)) = 4.2.8
+Provides: bundled(npm(es6-shim)) = 0.35.5
+Provides: bundled(npm(eslint)) = 2.13.1
+Provides: bundled(npm(eslint-config-prettier)) = 6.11.0
+Provides: bundled(npm(eslint-plugin-jsdoc)) = 28.6.1
+Provides: bundled(npm(eslint-plugin-prettier)) = 3.1.4
+Provides: bundled(npm(eslint-plugin-react-hooks)) = 4.0.5
+Provides: bundled(npm(eventemitter3)) = 3.1.2
+Provides: bundled(npm(expect.js)) = 0.3.1
+Provides: bundled(npm(expose-loader)) = 0.7.5
+Provides: bundled(npm(fast-text-encoding)) = 1.0.0
+Provides: bundled(npm(file-loader)) = 4.3.0
+Provides: bundled(npm(file-saver)) = 2.0.2
+Provides: bundled(npm(fork-ts-checker-webpack-plugin)) = 1.0.0
+Provides: bundled(npm(gaze)) = 1.1.3
+Provides: bundled(npm(glob)) = 5.0.15
+Provides: bundled(npm(grunt)) = 1.0.4
+Provides: bundled(npm(grunt-angular-templates)) = 1.1.0
+Provides: bundled(npm(grunt-cli)) = 1.2.0
+Provides: bundled(npm(grunt-contrib-clean)) = 2.0.0
+Provides: bundled(npm(grunt-contrib-compress)) = 1.6.0
+Provides: bundled(npm(grunt-contrib-copy)) = 1.0.0
+Provides: bundled(npm(grunt-exec)) = 3.0.0
+Provides: bundled(npm(grunt-newer)) = 1.3.0
+Provides: bundled(npm(grunt-notify)) = 0.4.5
+Provides: bundled(npm(grunt-postcss)) = 0.9.0
+Provides: bundled(npm(grunt-sass-lint)) = 0.2.4
+Provides: bundled(npm(grunt-usemin)) = 3.1.1
+Provides: bundled(npm(grunt-webpack)) = 3.1.3
+Provides: bundled(npm(hoist-non-react-statics)) = 2.5.5
+Provides: bundled(npm(html-loader)) = 0.5.5
+Provides: bundled(npm(html-webpack-harddisk-plugin)) = 1.0.1
+Provides: bundled(npm(html-webpack-plugin)) = 3.2.0
+Provides: bundled(npm(husky)) = 4.2.1
+Provides: bundled(npm(immutable)) = 3.8.2
+Provides: bundled(npm(is-hotkey)) = 0.1.4
+Provides: bundled(npm(jest)) = 25.5.4
+Provides: bundled(npm(jest-canvas-mock)) = 2.1.2
+Provides: bundled(npm(jest-date-mock)) = 1.0.8
+Provides: bundled(npm(jquery)) = 3.4.1
+Provides: bundled(npm(jsurl)) = 0.1.5
+Provides: bundled(npm(lerna)) = 3.20.2
+Provides: bundled(npm(lint-staged)) = 10.0.7
+Provides: bundled(npm(load-grunt-tasks)) = 5.1.0
+Provides: bundled(npm(lodash)) = 3.10.1
+Provides: bundled(npm(lru-cache)) = 4.1.5
+Provides: bundled(npm(marked)) = 0.3.19
+Provides: bundled(npm(md5)) = 2.2.1
+Provides: bundled(npm(memoize-one)) = 4.1.0
+Provides: bundled(npm(mini-css-extract-plugin)) = 0.7.0
+Provides: bundled(npm(mocha)) = 7.0.1
+Provides: bundled(npm(module-alias)) = 2.2.2
+Provides: bundled(npm(moment)) = 2.24.0
+Provides: bundled(npm(moment-timezone)) = 0.5.28
+Provides: bundled(npm(monaco-editor)) = 0.20.0
+Provides: bundled(npm(monaco-editor-webpack-plugin)) = 1.9.0
+Provides: bundled(npm(mousetrap)) = 1.6.5
+Provides: bundled(npm(mousetrap-global-bind)) = 1.1.0
+Provides: bundled(npm(mutationobserver-shim)) = 0.3.3
+Provides: bundled(npm(ngtemplate-loader)) = 2.0.1
+Provides: bundled(npm(node-sass)) = 4.13.1
+Provides: bundled(npm(nodemon)) = 2.0.2
+Provides: bundled(npm(optimize-css-assets-webpack-plugin)) = 5.0.3
+Provides: bundled(npm(papaparse)) = 4.6.3
+Provides: bundled(npm(postcss-browser-reporter)) = 0.6.0
+Provides: bundled(npm(postcss-loader)) = 3.0.0
+Provides: bundled(npm(postcss-reporter)) = 6.0.1
+Provides: bundled(npm(prettier)) = 1.18.2
+Provides: bundled(npm(prismjs)) = 1.17.1
+Provides: bundled(npm(prop-types)) = 15.7.2
+Provides: bundled(npm(rc-cascader)) = 1.0.1
+Provides: bundled(npm(re-resizable)) = 6.2.0
+Provides: bundled(npm(react)) = 16.10.2
+Provides: bundled(npm(react-dom)) = 16.10.2
+Provides: bundled(npm(react-grid-layout)) = 0.17.1
+Provides: bundled(npm(react-highlight-words)) = 0.16.0
+Provides: bundled(npm(react-hot-loader)) = 4.8.0
+Provides: bundled(npm(react-loadable)) = 5.5.0
+Provides: bundled(npm(react-popper)) = 1.3.3
+Provides: bundled(npm(react-redux)) = 7.2.0
+Provides: bundled(npm(react-reverse-portal)) = 2.0.1
+Provides: bundled(npm(react-sizeme)) = 2.6.8
+Provides: bundled(npm(react-split-pane)) = 0.1.89
+Provides: bundled(npm(react-test-renderer)) = 16.10.2
+Provides: bundled(npm(react-transition-group)) = 2.9.0
+Provides: bundled(npm(react-use)) = 13.27.0
+Provides: bundled(npm(react-virtualized-auto-sizer)) = 1.0.2
+Provides: bundled(npm(react-window)) = 1.8.5
+Provides: bundled(npm(redux)) = 3.7.2
+Provides: bundled(npm(redux-logger)) = 3.0.6
+Provides: bundled(npm(redux-mock-store)) = 1.5.4
+Provides: bundled(npm(redux-thunk)) = 2.3.0
+Provides: bundled(npm(regenerator-runtime)) = 0.11.1
+Provides: bundled(npm(regexp-replace-loader)) = 1.0.1
+Provides: bundled(npm(reselect)) = 4.0.0
+Provides: bundled(npm(rimraf)) = 2.6.3
+Provides: bundled(npm(rst2html)) = 1.0.4
+Provides: bundled(npm(rxjs)) = 6.5.5
+Provides: bundled(npm(rxjs-spy)) = 7.5.1
+Provides: bundled(npm(sass-lint)) = 1.12.1
+Provides: bundled(npm(sass-loader)) = 8.0.2
+Provides: bundled(npm(search-query-parser)) = 1.5.4
+Provides: bundled(npm(sinon)) = 8.1.1
+Provides: bundled(npm(slate)) = 0.47.8
+Provides: bundled(npm(slate-plain-serializer)) = 0.7.10
+Provides: bundled(npm(sockjs-client)) = 1.4.0
+Provides: bundled(npm(style-loader)) = 1.1.3
+Provides: bundled(npm(terser-webpack-plugin)) = 1.4.1
+Provides: bundled(npm(tether)) = 1.4.7
+Provides: bundled(npm(tether-drop)) = 1.5.0
+Provides: bundled(npm(tinycolor2)) = 1.4.1
+Provides: bundled(npm(ts-jest)) = 26.3.0
+Provides: bundled(npm(ts-node)) = 8.8.1
+Provides: bundled(npm(tslib)) = 1.10.0
+Provides: bundled(npm(tti-polyfill)) = 0.2.2
+Provides: bundled(npm(typescript)) = 3.7.5
+Provides: bundled(npm(uuid)) = 3.3.3
+Provides: bundled(npm(webpack)) = 4.41.2
+Provides: bundled(npm(webpack-bundle-analyzer)) = 3.6.0
+Provides: bundled(npm(webpack-cleanup-plugin)) = 0.5.1
+Provides: bundled(npm(webpack-cli)) = 3.3.10
+Provides: bundled(npm(webpack-dev-server)) = 3.10.3
+Provides: bundled(npm(webpack-merge)) = 4.2.2
+Provides: bundled(npm(whatwg-fetch)) = 3.0.0
+Provides: bundled(npm(zone.js)) = 0.7.8
 
 %description
 Grafana is an open source, feature rich metrics dashboard and graph editor for
 Graphite, InfluxDB & OpenTSDB.
 
-
-%package cloudwatch
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana cloudwatch datasource
-
-%description cloudwatch
-The Grafana cloudwatch datasource.
-
-%package elasticsearch
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana elasticsearch datasource
-
-%description elasticsearch
-The Grafana elasticsearch datasource.
-
-%package azure-monitor
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana azure-monitor datasource
-
-%description azure-monitor
-The Grafana azure-monitor datasource.
-
-%package graphite
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana graphite datasource
-
-%description graphite
-The Grafana graphite datasource.
-
-%package influxdb
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana influxdb datasource
-
-%description influxdb
-The Grafana influxdb datasource.
-
-%package loki
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana loki datasource
-
-%description loki
-The Grafana loki datasource.
-
-%package mssql
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana mssql datasource
-
-%description mssql
-The Grafana mssql datasource.
-
-%package mysql
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana mysql datasource
-
-%description mysql
-The Grafana mysql datasource.
-
-%package opentsdb
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana opentsdb datasource
-
-%description opentsdb
-The Grafana opentsdb datasource.
-
-%package postgres
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana postgres datasource
-
-%description postgres
-The Grafana postgres datasource.
-
-%package prometheus
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana prometheus datasource
-
-%description prometheus
-The Grafana prometheus datasource.
-
-%package stackdriver
-Requires: %{name} = %{version}-%{release}
-Summary: Grafana stackdriver datasource
-
-%description stackdriver
-The Grafana stackdriver datasource.
-
-
 %prep
 %setup -q -T -D -b 0
 %setup -q -T -D -b 1
+rm -r plugins-bundled
+%setup -q -T -D -b 2
+
+%patch1 -p1
+%patch2 -p1
+%patch3 -p1
+%patch4 -p1
+%patch5 -p1
 
 # Set up build subdirs and links
 mkdir -p %{_builddir}/src/github.com/grafana
-ln -sf %{_builddir}/%{name}-%{version} \
+ln -s %{_builddir}/%{name}-%{version} \
     %{_builddir}/src/github.com/grafana/grafana
 
-# remove some (apparent) development files, for rpmlint
-rm -f public/sass/.sass-lint.yml public/test/.jshintrc
-
 %build
-# Build the server-side binaries
+# Build the backend
 cd %{_builddir}/src/github.com/grafana/grafana
-%global archbindir bin/`go env GOOS`-`go env GOARCH`
-echo _builddir=%{_builddir} archbindir=%{archbindir} gopath=%{gopath}
-[ ! -d %{archbindir} ] && mkdir -p %{archbindir}
-
-# non-modular build
-export GOPATH=%{_builddir}:%{gopath}
-export GO111MODULE=off; rm -f go.mod
+export GOPATH=%{_builddir}
 
 # see grafana-X.X.X/build.go
 export LDFLAGS="-X main.version=%{version} -X main.buildstamp=${SOURCE_DATE_EPOCH}"
 for cmd in grafana-cli grafana-server; do
-    go build -o %{archbindir}/${cmd} ./pkg/cmd/${cmd}
+    %gobuild -o %{_builddir}/bin/${cmd} ./pkg/cmd/${cmd}
 done
 
 %install
-# Fix up arch bin directories
-[ ! -d bin/x86_64 ] && ln -sf linux-amd64 bin/x86_64
-[ ! -d bin/i386 ] && ln -sf linux-386 bin/i386
-[ ! -d bin/ppc64le ] && ln -sf linux-ppc64le bin/ppc64le
-[ ! -d bin/s390x ] && ln -sf linux-s390x bin/s390x
-[ ! -d bin/arm ] && ln -sf linux-arm bin/arm
-[ ! -d bin/arm64 ] && ln -sf linux-arm64 bin/aarch64
-[ ! -d bin/aarch64 ] && ln -sf linux-aarch64 bin/aarch64
-
 # dirs, shared files, public html, webpack
 install -d %{buildroot}%{_sbindir}
 install -d %{buildroot}%{_datadir}/%{name}
 install -d %{buildroot}%{_libexecdir}/%{name}
-cp -a conf public %{buildroot}%{_datadir}/%{name}
+cp -a conf public plugins-bundled %{buildroot}%{_datadir}/%{name}
 
 # wrappers
 install -p -m 755 packaging/wrappers/grafana-cli %{buildroot}%{_sbindir}/%{name}-cli
 
 # binaries
-install -p -m 755 %{archbindir}/%{name}-server %{buildroot}%{_sbindir}
-install -p -m 755 %{archbindir}/%{name}-cli %{buildroot}%{_libexecdir}/%{name}
+install -p -m 755 %{_builddir}/bin/%{name}-server %{buildroot}%{_sbindir}
+install -p -m 755 %{_builddir}/bin/%{name}-cli %{buildroot}%{_libexecdir}/%{name}
 
 # man pages
+install -d %{buildroot}%{_mandir}/man1
+install -p -m 644 docs/man/man1/* %{buildroot}%{_mandir}/man1
 
 # config dirs
 install -d %{buildroot}%{_sysconfdir}/%{name}
+install -d %{buildroot}%{_sysconfdir}/%{name}/provisioning
+install -d %{buildroot}%{_sysconfdir}/%{name}/provisioning/dashboards
+install -d %{buildroot}%{_sysconfdir}/%{name}/provisioning/datasources
+install -d %{buildroot}%{_sysconfdir}/%{name}/provisioning/notifiers
+install -d %{buildroot}%{_sysconfdir}/%{name}/provisioning/plugins
 install -d %{buildroot}%{_sysconfdir}/sysconfig
 
 # config defaults
-install -p -m 640 %{SOURCE2} %{buildroot}%{_sysconfdir}/%{name}/grafana.ini
+install -p -m 640 %{SOURCE3} %{buildroot}%{_sysconfdir}/%{name}/grafana.ini
 install -p -m 640 conf/ldap.toml %{buildroot}%{_sysconfdir}/%{name}/ldap.toml
-install -p -m 644 %{SOURCE2} %{buildroot}%{_datadir}/%{name}/conf/defaults.ini
+install -p -m 644 %{SOURCE3} %{buildroot}%{_datadir}/%{name}/conf/defaults.ini
 install -p -m 644 packaging/rpm/sysconfig/grafana-server \
     %{buildroot}%{_sysconfdir}/sysconfig/grafana-server
 
@@ -344,15 +492,16 @@ chmod 640 %{_sysconfdir}/%{name}/ldap.toml
 
 
 %check
+# Test backend
 cd %{_builddir}/src/github.com/grafana/grafana
-export GOPATH=%{_builddir}:%{gopath}
-# remove tests currently failing - these two are due to a symlink
-# BUILD/src/github.com/grafana/grafana -> BUILD/grafana-6.6.1
-rm -f pkg/services/provisioning/dashboards/file_reader_linux_test.go
-rm -f pkg/services/provisioning/dashboards/file_reader_test.go
-export GO111MODULE=off
-go test ./pkg/...
+export GOPATH=%{_builddir}
 
+# in setting_test.go there is a unit test which checks if 10 days are 240 hours
+# which is usually true except if the dayligt saving time change falls into the last 10 days, then it's either 239 or 241 hours...
+# let's set the time zone to a time zone without daylight saving time
+export TZ=GMT
+
+%gotest ./pkg/...
 
 %files
 # binaries and wrappers
@@ -361,103 +510,46 @@ go test ./pkg/...
 %{_libexecdir}/%{name}
 
 # config files
-%dir %{_sysconfdir}/%{name}
-%config(noreplace) %attr(640, root, %{GRAFANA_GROUP}) %{_sysconfdir}/%{name}/grafana.ini
-%config(noreplace) %attr(640, root, %{GRAFANA_GROUP}) %{_sysconfdir}/%{name}/ldap.toml
 %config(noreplace) %{_sysconfdir}/sysconfig/grafana-server
-
-# Grafana configuration to dynamically create /run/grafana/grafana.pid on tmpfs
-%{_tmpfilesdir}/%{name}.conf
+%dir %{_sysconfdir}/%{name}
+%attr(0755, root, %{GRAFANA_GROUP}) %dir %{_sysconfdir}/%{name}/provisioning
+%attr(0755, root, %{GRAFANA_GROUP}) %dir %{_sysconfdir}/%{name}/provisioning/dashboards
+%attr(0750, root, %{GRAFANA_GROUP}) %dir %{_sysconfdir}/%{name}/provisioning/datasources
+%attr(0755, root, %{GRAFANA_GROUP}) %dir %{_sysconfdir}/%{name}/provisioning/notifiers
+%attr(0755, root, %{GRAFANA_GROUP}) %dir %{_sysconfdir}/%{name}/provisioning/plugins
+%attr(0640, root, %{GRAFANA_GROUP}) %config(noreplace) %{_sysconfdir}/%{name}/grafana.ini
+%attr(0640, root, %{GRAFANA_GROUP}) %config(noreplace) %{_sysconfdir}/%{name}/ldap.toml
 
 # config database directory and plugins
-%attr(750, %{GRAFANA_USER}, %{GRAFANA_GROUP}) %dir %{_sharedstatedir}/%{name}
-%attr(-, %{GRAFANA_USER}, %{GRAFANA_GROUP}) %dir %{_sharedstatedir}/%{name}/plugins
+%attr(0750, %{GRAFANA_USER}, %{GRAFANA_GROUP}) %dir %{_sharedstatedir}/%{name}
+%attr(-,    %{GRAFANA_USER}, %{GRAFANA_GROUP}) %dir %{_sharedstatedir}/%{name}/plugins
 
-# shared directory and all files therein, except some datasources
+# shared directory and all files therein
 %{_datadir}/%{name}
-
-# built-in datasources that are sub-packaged
-%global dsdir %{_datadir}/%{name}/public/app/plugins/datasource
-%exclude %{dsdir}/cloudwatch 
-%exclude %{dsdir}/elasticsearch 
-%exclude %{dsdir}/graphite
-%exclude %{dsdir}/grafana-azure-monitor-datasource
-%exclude %{dsdir}/influxdb
-%exclude %{dsdir}/loki
-%exclude %{dsdir}/mssql
-%exclude %{dsdir}/mysql
-%exclude %{dsdir}/opentsdb
-%exclude %{dsdir}/postgres
-%exclude %{dsdir}/prometheus
-%exclude %{dsdir}/stackdriver
-
-%dir %{_datadir}/%{name}/conf
 %attr(-, root, %{GRAFANA_GROUP}) %{_datadir}/%{name}/conf/*
 
 # systemd service file
 %{_unitdir}/grafana-server.service
 
+# Grafana configuration to dynamically create /run/grafana/grafana.pid on tmpfs
+%{_tmpfilesdir}/%{name}.conf
+
 # log directory - grafana.log is created by grafana-server, and it does it's own log rotation
 %attr(0755, %{GRAFANA_USER}, %{GRAFANA_GROUP}) %dir %{_localstatedir}/log/%{name}
 
 # man pages for grafana binaries
+%{_mandir}/man1/%{name}-server.1*
+%{_mandir}/man1/%{name}-cli.1*
 
 # other docs and license
 %license LICENSE
-%doc CHANGELOG.md CODE_OF_CONDUCT.md CONTRIBUTING.md NOTICE.md
-%doc PLUGIN_DEV.md README.md ROADMAP.md UPGRADING_DEPENDENCIES.md
-
-#
-# datasources split out into subpackages
-#
-%files cloudwatch
-%{_datadir}/%{name}/public/app/plugins/datasource/cloudwatch
-%doc %{_datadir}/%{name}/public/app/plugins/datasource/cloudwatch/README.md
-
-%files elasticsearch
-%{_datadir}/%{name}/public/app/plugins/datasource/elasticsearch
-%doc %{_datadir}/%{name}/public/app/plugins/datasource/elasticsearch/README.md
-
-%files azure-monitor
-%{_datadir}/%{name}/public/app/plugins/datasource/grafana-azure-monitor-datasource
-
-%files graphite
-%{_datadir}/%{name}/public/app/plugins/datasource/graphite
-%doc %{_datadir}/%{name}/public/app/plugins/datasource/graphite/README.md
-
-%files influxdb
-%{_datadir}/%{name}/public/app/plugins/datasource/influxdb
-%doc %{_datadir}/%{name}/public/app/plugins/datasource/influxdb/README.md
-
-%files loki
-%{_datadir}/%{name}/public/app/plugins/datasource/loki
-%doc %{_datadir}/%{name}/public/app/plugins/datasource/loki/README.md
-
-%files mssql
-%{_datadir}/%{name}/public/app/plugins/datasource/mssql
-%doc %{_datadir}/%{name}/public/app/plugins/datasource/mssql/README.md
-
-%files mysql
-%{_datadir}/%{name}/public/app/plugins/datasource/mysql
-%doc %{_datadir}/%{name}/public/app/plugins/datasource/mysql/README.md
-
-%files opentsdb
-%{_datadir}/%{name}/public/app/plugins/datasource/opentsdb
-%doc %{_datadir}/%{name}/public/app/plugins/datasource/opentsdb/README.md
-
-%files postgres
-%{_datadir}/%{name}/public/app/plugins/datasource/postgres
-%doc %{_datadir}/%{name}/public/app/plugins/datasource/postgres/README.md
-
-%files prometheus
-%{_datadir}/%{name}/public/app/plugins/datasource/prometheus
-%doc %{_datadir}/%{name}/public/app/plugins/datasource/prometheus/README.md
-
-%files stackdriver
-%{_datadir}/%{name}/public/app/plugins/datasource/stackdriver
-%doc %{_datadir}/%{name}/public/app/plugins/datasource/stackdriver/README.md
+%doc CHANGELOG.md CODE_OF_CONDUCT.md CONTRIBUTING.md GOVERNANCE.md ISSUE_TRIAGE.md MAINTAINERS.md NOTICE.md
+%doc PLUGIN_DEV.md README.md ROADMAP.md SECURITY.md SUPPORT.md UPGRADING_DEPENDENCIES.md WORKFLOW.md
 
 
 %changelog
+* Fri Sep 3 2021 Python_Bot <Python_Bot@openeuler.org> 7.3.6-1
+- Update to version 7.3.6
+
 * Tue Aug 11 2020 houjian <houjian@kylinos.cn> - 6.7.4-1
 - Package init
