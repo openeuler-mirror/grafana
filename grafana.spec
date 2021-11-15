@@ -6,7 +6,7 @@
 %endif
 
 Name:             grafana
-Version:          7.3.6
+Version:          7.5.11
 Release:          1
 Summary:          Metrics dashboard and graph editor
 License:          Apache 2.0
@@ -25,9 +25,13 @@ Patch1:           001-wrappers-grafana-cli.patch
 Patch2:           002-manpages.patch
 # remove failing assertions due to a symlink
 # BUILD/src/github.com/grafana/grafana -> BUILD/grafana-X.Y.Z
-Patch3:           003-remove-dashboard-abspath-test.patch
+Patch3:           003-fix-dashboard-abspath-test.patch
 Patch4:           004-pin-yarn-version.patch
-Patch5:           005-remove-saml-dependency.patch
+Patch5:           005-remove-unused-dependencies.patch
+Patch6:           006-fix-gtime-test-32bit.patch
+Patch7:           007-skip-x86-goldenfiles-tests.patch
+Patch8:           008-remove-unused-frontend-crypto.patch
+Patch9:           009-patch-unused-backend-crypto.patch
 
 BuildRequires:    git, systemd, golang 
 
@@ -137,7 +141,7 @@ Provides: bundled(golang(golang.org/x/time)) = 0.0.0-20200630173020.3af7569d3a1e
 Provides: bundled(golang(google.golang.org/grpc)) = 1.33.1
 Provides: bundled(golang(gopkg.in/ini.v1)) = 1.51.0
 Provides: bundled(golang(gopkg.in/ldap.v3)) = 3.0.2
-Provides: bundled(golang(gopkg.in/macaron.v1)) = 1.3.9
+Provides: bundled(golang(gopkg.in/macaron.v1)) = 1.4.0
 Provides: bundled(golang(gopkg.in/mail.v2)) = 2.3.1
 Provides: bundled(golang(gopkg.in/redis.v5)) = 5.2.9
 Provides: bundled(golang(gopkg.in/square/go-jose.v2)) = 2.4.1
@@ -386,6 +390,12 @@ rm -r plugins-bundled
 %patch3 -p1
 %patch4 -p1
 %patch5 -p1
+%patch6 -p1
+%patch7 -p1
+%patch8 -p1
+%patch9 -p1
+
+
 
 # Set up build subdirs and links
 mkdir -p %{_builddir}/src/github.com/grafana
@@ -500,6 +510,7 @@ export GOPATH=%{_builddir}
 # which is usually true except if the dayligt saving time change falls into the last 10 days, then it's either 239 or 241 hours...
 # let's set the time zone to a time zone without daylight saving time
 export TZ=GMT
+rm -r pkg/macaron
 
 %gotest ./pkg/...
 
@@ -548,5 +559,8 @@ export TZ=GMT
 
 
 %changelog
+* Fri Nov 12 2021 wangkai <wangkai385@huawei.com> 7.5.11-1
+- Upgrade to 7.5.11 for fix CVE-2021-39226
+
 * Fri Sep 3 2021 Python_Bot <Python_Bot@openeuler.org> 7.3.6-1
 - Init Package
