@@ -7,7 +7,7 @@
 
 Name:             grafana
 Version:          7.5.11
-Release:          2
+Release:          3
 Summary:          Metrics dashboard and graph editor
 License:          Apache 2.0
 URL:              https://grafana.org
@@ -30,6 +30,7 @@ Patch4:           004-remove-unused-dependencies.patch
 Patch5:           005-fix-gtime-test-32bit.patch
 Patch6:           006-remove-unused-frontend-crypto.patch
 Patch7:           007-patch-unused-backend-crypto.patch
+Patch8:           CVE-2021-43813.patch
 
 BuildRequires:    git, systemd, golang 
 
@@ -398,6 +399,7 @@ rm -r plugins-bundled
 %patch5 -p1
 %patch6 -p1
 %patch7 -p1
+%patch8 -p1
 
 
 
@@ -563,6 +565,9 @@ rm -r pkg/macaron
 
 
 %changelog
+* Wed Dec 15 2021 wangkai <wangkai385@huawei.com> 7.5.11-3
+- Fix CVE-2021-43813
+
 * Wed Nov 17 2021 wangkai <wangkai385@huawei.com> 7.5.11-2
 - Update Patch Source Provides
 
