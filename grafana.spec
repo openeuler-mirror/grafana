@@ -7,7 +7,7 @@
 
 Name:             grafana
 Version:          7.5.11
-Release:          4
+Release:          5
 Summary:          Metrics dashboard and graph editor
 License:          Apache 2.0
 URL:              https://grafana.org
@@ -32,6 +32,8 @@ Patch6:           006-remove-unused-frontend-crypto.patch
 Patch7:           007-patch-unused-backend-crypto.patch
 Patch8:           CVE-2021-43813.patch
 Patch9:           CVE-2022-21673.patch
+#https://github.com/grafana/grafana/commit/27726868b3d7c613844b55cd209ca93645c99b85
+Patch10:          CVE-2022-21702.patch
 
 BuildRequires:    git, systemd, golang 
 
@@ -402,6 +404,7 @@ rm -r plugins-bundled
 %patch7 -p1
 %patch8 -p1
 %patch9 -p1
+%patch10 -p1
 
 
 # Set up build subdirs and links
@@ -566,6 +569,9 @@ rm -r pkg/macaron
 
 
 %changelog
+* Thu Mar 17 2022 yaoxin <yaoxin30@huawei.com> - 7.5.11-5
+- Fix CVE-2022-21702
+
 * Thu Jan 27 2022 wangkai <wangkai385@huawei.com> 7.5.11-4
 - Fix CVE-2022-21673
 
