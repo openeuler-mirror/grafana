@@ -6,19 +6,27 @@
 %endif
 
 Name:             grafana
-Version:          7.5.11
-Release:          4
+Version:          7.5.15
+Release:          1
 Summary:          Metrics dashboard and graph editor
 License:          Apache 2.0
 URL:              https://grafana.org
 # Source0 contains the tagged upstream sources
 Source0:          https://github.com/grafana/grafana/archive/v%{version}/%{name}-%{version}.tar.gz
 # Source1 contains the bundled Go and Node.js dependencies
-Source1:          grafana-vendor-%{version}.tar.xz
+Source1:          grafana-vendor-%{version}-1.tar.xz
 # Source2 contains the precompiled frontend
-Source2:          grafana-webpack-%{version}.tar.gz
+Source2:          grafana-webpack-%{version}-1.tar.gz
 # Source3 contains Grafana configuration defaults for distributions
 Source3:          distro-defaults.ini
+# Source4 contains the Makefile to create the vendor and webpack bundles
+Source4:          Makefile
+# Source5 contains the script to build the frontend
+Source5:          build_frontend.sh
+# Source6 contains the script to generate the list of bundled nodejs packages
+Source6:          list_bundled_nodejs_packages.py
+# Source7 contains the script to create the vendor and webpack bundles in a container
+Source7:          create_bundles_in_container.sh
 
 # Patches
 Patch1:           001-wrappers-grafana-cli.patch
@@ -30,8 +38,11 @@ Patch4:           004-remove-unused-dependencies.patch
 Patch5:           005-fix-gtime-test-32bit.patch
 Patch6:           006-remove-unused-frontend-crypto.patch
 Patch7:           007-patch-unused-backend-crypto.patch
-Patch8:           CVE-2021-43813.patch
-Patch9:           CVE-2022-21673.patch
+Patch11:          011-use-hmac-sha-256-for-password-reset-tokens.patch
+Patch12:          012-support-go1.18.patch
+Patch13:          013-CVE-2021-23648.patch
+Patch14:          014-CVE-2022-21698.patch
+Patch15:          015-CVE-2022-21698.vendor.patch
 
 BuildRequires:    git, systemd, golang 
 
@@ -400,8 +411,11 @@ rm -r plugins-bundled
 %patch5 -p1
 %patch6 -p1
 %patch7 -p1
-%patch8 -p1
-%patch9 -p1
+%patch11 -p1
+%patch12 -p1
+%patch13 -p1
+%patch14 -p1
+%patch15 -p1
 
 
 # Set up build subdirs and links
@@ -566,6 +580,9 @@ rm -r pkg/macaron
 
 
 %changelog
+* Fri May 6 2022 yaoxin <yaoxin30@h-partners.com> - 7.5.15-1
+- Update to 7.5.15 for fix CVE-2022-21703,CVE-2022-21713
+
 * Thu Jan 27 2022 wangkai <wangkai385@huawei.com> 7.5.11-4
 - Fix CVE-2022-21673
 
