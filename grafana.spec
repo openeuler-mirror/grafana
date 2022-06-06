@@ -7,7 +7,7 @@
 
 Name:             grafana
 Version:          7.5.15
-Release:          1
+Release:          2
 Summary:          Metrics dashboard and graph editor
 License:          Apache 2.0
 URL:              https://grafana.org
@@ -43,6 +43,8 @@ Patch12:          012-support-go1.18.patch
 Patch13:          013-CVE-2021-23648.patch
 Patch14:          014-CVE-2022-21698.patch
 Patch15:          015-CVE-2022-21698.vendor.patch
+#https://github.com/grafana/grafana/pull/49223
+Patch16:          CVE-2022-29170.patch
 
 BuildRequires:    git, systemd, golang 
 
@@ -416,6 +418,7 @@ rm -r plugins-bundled
 %patch13 -p1
 %patch14 -p1
 %patch15 -p1
+%patch16 -p1
 
 # Set up build subdirs and links
 mkdir -p %{_builddir}/src/github.com/grafana
@@ -579,6 +582,9 @@ rm -r pkg/macaron
 
 
 %changelog
+* Mon Jun 6 2022 yaoxin <yaoxin30@h-partners.com> - 7.5.15-2
+- Fix CVE-2022-29170
+
 * Fri May 6 2022 yaoxin <yaoxin30@h-partners.com> - 7.5.15-1
 - Update to 7.5.15 for fix CVE-2022-21703,CVE-2022-21713
 
