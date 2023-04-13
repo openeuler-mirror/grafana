@@ -7,7 +7,7 @@
 
 Name:             grafana
 Version:          7.5.15
-Release:          3
+Release:          4
 Summary:          Metrics dashboard and graph editor
 License:          Apache 2.0
 URL:              https://grafana.org
@@ -46,6 +46,8 @@ Patch15:          015-CVE-2022-21698.vendor.patch
 #https://github.com/grafana/grafana/pull/49223
 Patch16:          CVE-2022-29170.patch
 Patch17:          CVE-2022-31107.patch
+# https://github.com/grafana/grafana-plugin-sdk-go/pull/637
+Patch18:          fix-gtime_test.patch
 
 BuildRequires:    git, systemd, golang 
 
@@ -421,6 +423,7 @@ rm -r plugins-bundled
 %patch15 -p1
 %patch16 -p1
 %patch17 -p1
+%patch18 -p1
 
 
 # Set up build subdirs and links
@@ -585,6 +588,9 @@ rm -r pkg/macaron
 
 
 %changelog
+* Thu Apr 13 2023 wangkai <13474090681@163.com> - 7.5.15-4
+- Fix gtime_test
+
 * Wed Aug 17 2022 yaoxin <yaoxin30@h-partners.com> - 7.5.15-3
 - Fix CVE-2022-31107
 
