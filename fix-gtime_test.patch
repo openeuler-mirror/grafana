@@ -1,0 +1,50 @@
+From 3e491ce63e1c8f63abc891765848a7484f0d6005 Mon Sep 17 00:00:00 2001
+From: Andres Martinez Gotor <andres.martinez@grafana.com>
+Date: Wed, 1 Mar 2023 13:08:34 +0100
+Subject: [PATCH] fix gtime_test (#637)
+
+---
+ pkg/components/gtime/gtime_test.go | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/pkg/components/gtime/gtime_test.go b/pkg/components/gtime/gtime_test.go
+index 0b1b23a..a7b952d 100644
+--- a/pkg/components/gtime/gtime_test.go
++++ b/pkg/components/gtime/gtime_test.go
+@@ -72,13 +72,13 @@ func TestParseDuration(t *testing.T) {
+ 
+ func calculateDays() (int, int) {
+ 	now := time.Now().UTC()
+-	currentYear, currentMonth, _ := now.Date()
++	currentYear, currentMonth, currentDay := now.Date()
+ 
+ 	firstDayOfMonth := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, time.UTC)
+ 	daysInMonth := firstDayOfMonth.AddDate(0, 1, -1).Day()
+ 
+-	t1 := time.Date(currentYear, 1, 1, 0, 0, 0, 0, time.UTC)
+-	t2 := time.Date(currentYear+1, 1, 1, 0, 0, 0, 0, time.UTC)
++	t1 := time.Date(currentYear, currentMonth, currentDay, 0, 0, 0, 0, time.UTC)
++	t2 := t1.AddDate(1, 0, 0)
+ 
+ 	daysInYear := int(t2.Sub(t1).Hours() / 24)
+ 
+@@ -87,13 +87,13 @@ func calculateDays() (int, int) {
+ 
+ func calculateDays5y() int {
+ 	now := time.Now().UTC()
+-	currentYear, _, _ := now.Date()
++	currentYear, currentMonth, currentDay := now.Date()
+ 
+ 	var daysInYear int
+ 
+ 	for i := 0; i < 5; i++ {
+-		t1 := time.Date(currentYear+i, 1, 1, 0, 0, 0, 0, time.UTC)
+-		t2 := time.Date(currentYear+i+1, 1, 1, 0, 0, 0, 0, time.UTC)
++		t1 := time.Date(currentYear+i, currentMonth, currentDay, 0, 0, 0, 0, time.UTC)
++		t2 := t1.AddDate(1, 0, 0)
+ 
+ 		daysInYear = daysInYear + int(t2.Sub(t1).Hours()/24)
+ 	}
+-- 
+2.33.0
+
